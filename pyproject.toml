@@ -1,0 +1,26 @@
+[build-system]
+requires = ["setuptools>=61.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "automation-framework"
+version = "0.1.0"
+description = "A unified framework for browser and desktop automation using Selenium and PyAutoGUI"
+license = { text = "MIT" }
+authors = [
+    { name = "Chris William Yomi Nya", email = "chriswilliam.crealab@gmail.com" }
+]
+readme = "README.md"
+requires-python = ">=3.8"
+dependencies = [
+    "selenium>=4.0",
+    "pyautogui>=0.9.50",
+    "pillow"  # Required by PyAutoGUI
+]
+
+[project.urls]
+Homepage = "https://github.com/yourusername/automation-framework"
+Repository = "https://github.com/yourusername/automation-framework"
+
+[tool.setuptools.packages.find]
+where = ["src"]

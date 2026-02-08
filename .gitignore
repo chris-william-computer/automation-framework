@@ -1,0 +1,244 @@
+# Byte-compiled / optimized / DLL files
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+
+# C extensions
+*.o
+
+# Distribution / packaging
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+automation_framework.egg-info/
+wheels/
+share/python-wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+MANIFEST
+
+# PyInstaller
+*.manifest
+*.spec
+
+# Installer logs
+pip-log.txt
+pip-delete-this-directory.txt
+
+# Unit test / coverage reports
+htmlcov/
+.tox/
+.nox/
+.coverage
+.coverage.*
+.cache
+nosetests.xml
+coverage.xml
+*.cover
+*.py,cover
+.hypothesis/
+.pytest_cache/
+
+# Translations
+*.mo
+*.pot
+
+# Django stuff:
+*.log
+local_settings.py
+db.sqlite3
+db.sqlite3-journal
+
+# Flask stuff:
+instance/
+.webassets-cache
+
+# Scrapy stuff:
+.scrapy
+
+# Sphinx documentation
+docs/_build/
+
+# PyBuilder
+.pybuilder/
+target/
+
+# Jupyter Notebook
+.ipynb_checkpoints
+
+# IPython
+profile_default/
+ipython_config.py
+
+# pyenv
+# .python-version
+
+# pipenv
+# According to pypa/pipenv#598, it's recommended to include Pipfile.lock in version control.
+# However, if you have good
+#Pipfile.lock
+
+# poetry
+# https://python-poetry.org/docs/basic-usage/#commit-your-poetrylock-file-to-version-control
+#poetry.lock
+
+# pdm
+# https://pdm.fming.dev/#use-with-git
+pdm.lock
+.pdm.toml
+.pyoxidizer/
+
+# PEP 582; used by e.g. github.com/David-OConnor/pyflow and github.com/pdm-project/pdm
+__pypackages__/
+
+# Celery stuff
+celerybeat-schedule
+celerybeat.pid
+
+# SageMath parsed files
+*.sage.py
+
+# Environments
+.env
+.venv
+env/
+venv/
+ENV/
+env.bak/
+venv.bak/
+
+# Spyder project settings
+.spyderproject
+.spyproject
+
+# Rope project settings
+.ropeproject
+
+# mkdocs documentation
+/site
+
+# mypy
+.mypy_cache/
+.dmypy.json
+dmypy.json
+
+# Pyre type checker
+.pyre/
+
+# pytype static type analyzer
+.pytype/
+
+# Cython debug symbols
+cython_debug/
+
+# PyCharm
+# JetBrains specific template is maintained in a separate JetBrains.gitignore that can
+# be found at https://github.com/github/gitignore/blob/main/Global/JetBrains.gitignore
+# and can be added to the global gitignore or merged into this file.  For a more nuclear
+# option (not recommended) you can uncomment the following to ignore the entire idea folder.
+#.idea/
+
+# VS Code
+.vscode/
+
+# Virtual Environment Variables
+.envrc
+.venvrc
+.venv/
+.ENV/
+env/
+venv/
+
+# OS generated files
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+VolumeIcon.icns
+
+# IDE specific files
+.idea/
+*.swp
+*.swo
+*~
+
+# Local configuration files
+config.json
+secrets.json
+.local/
+
+# Browser-sync
+.browser-sync/
+
+# Temporary files
+*.tmp
+*.temp
+
+# Logs
+*.log
+logs/
+*.out
+
+# Coverage
+.coverage*
+
+# IDE
+.vscode/
+.idea/
+
+# Compiled Python files
+*.pyc
+*.pyo
+*.pyd
+
+# Distribution Archives
+*.tar.gz
+*.zip
+
+# Environment specific files
+.env
+.env.local
+.env.development.local
+.env.test.local
+.env.production.local
+
+# Local .env files
+.env.local
+.env.*.local
+
+# Python virtualenv
+venv/
+ENV/
+
+# Test files
+.pytest_cache/
+.coverage
+
+# Local settings
+local_settings.py
+
+# Database
+*.db
+*.db-journal
+
+# Sensitive files
+credentials.json
+tokens.json
+keys.json
+.key
+.pem
+.crt
