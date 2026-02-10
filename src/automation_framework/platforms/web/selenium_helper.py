@@ -30,9 +30,14 @@ from selenium.webdriver.common.by import By
 from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
 from selenium.common.exceptions import TimeoutException, NoSuchElementException 
-from typing import Union, Tuple, Optional, Callable, List
+from selenium.webdriver.support.relative_locator import locate_with
 
-from automation_framework.utils.exceptions import ActionFailedError, ElementNotFoundError  # Line 7
+
+from typing import Union, Tuple, Optional, Callable, List
+import re
+from urllib.parse import urlparse
+
+from automation_framework.utils.exceptions import ActionFailedError, ElementNotFoundError 
 from automation_framework.utils.logger import automation_logger 
 
 class SeleniumHelper:
@@ -114,7 +119,6 @@ class SeleniumHelper:
 
         return condition_map[condition]
 
-    @staticmethod
     def _get_current_url_or_default(self, default="Unknown") -> str:
         """
         Safely retrieve the current page URL from the WebDriver instance with graceful error handling.
@@ -521,6 +525,7 @@ class SeleniumHelper:
             )
             return False
 
+
     # --- LOCATOR BY PURPOSE METHODS ---
     def find_by_data_test_id(
         self,
@@ -550,7 +555,7 @@ class SeleniumHelper:
                                             initialization. Override for elements that require
                                             extended loading or processing time.
             condition (str, optional): The expected state condition the element must satisfy.
-                                    Valid options are:
+                                    Valid options are.
                                     - 'clickable': Element must be present, visible, and enabled
                                     - 'visible': Element must be present and visible
                                     - 'present': Element must be present in the DOM (any state)
@@ -609,11 +614,14 @@ class SeleniumHelper:
     def find_by_aria_label(
         self,
         aria_label: str,
+        match_type: str = "exact",
+        tag: str = "*",
+        index: int = 0,
         wait_time: Optional[int] = None,
         condition: str = "clickable"
     ) -> Union[str, bool]:
         """
-        Locate and retrieve an element by its ARIA label attribute with configurable wait conditions.
+        Locate and retrieve an element by its ARIA label attribute with flexible matching options.
 
         This method leverages ARIA (Accessible Rich Internet Applications) labels, which are
         specifically designed to improve web accessibility for users with disabilities.
@@ -621,82 +629,127 @@ class SeleniumHelper:
         reliable and semantically meaningful locators that are maintained as part of
         accessibility compliance efforts.
 
-        ARIA labels are particularly valuable for finding interactive elements like buttons,
-        links, form controls, and navigation items that may not have stable IDs or classes.
-        The method includes comprehensive error handling and debugging support for robust
-        automation workflows.
+        The method supports multiple matching strategies to handle dynamic content where
+        aria-label values change based on state (e.g., like counts, toggle states).
 
         Args:
-            aria_label (str): The specific value of the aria-label attribute to search for.
-                            This should be the exact string value assigned to the target
-                            element's aria-label attribute. Example: "Close modal dialog"
-                            or "Search button" - these are typically human-readable descriptions.
+            aria_label (str): The value to search for in the aria-label attribute.
+                    For exact matches: provide the complete string
+                    For partial matches: provide the substring to match
+            match_type (str, optional): How to match the aria-label. 
+                    Valid values: 'exact', 'contains', 'starts_with', 'ends_with', 'not_contains'.
+                    Default is 'exact'.
+                    - 'exact': Complete string match
+                    - 'contains': Partial string match anywhere in the label
+                    - 'starts_with': Match beginning of the label
+                    - 'ends_with': Match end of the label
+                    - 'not_contains': Exclude elements containing the string
+            tag (str, optional): HTML tag to search for. Use '*' for any tag (default),
+                    or specify 'button', 'div', 'input', etc.
+            index (int, optional): Zero-based index of the matching element to return.
+                    Default is 0 (first match). Use 1 for second match, etc.
             wait_time (Optional[int], optional): Maximum time in seconds to wait for the element
-                                            to meet the specified condition. If None (default),
-                                            uses the class's default_timeout value set during
-                                            initialization. Override for elements that require
-                                            extended loading or processing time.
+                    to meet the specified condition. If None (default),
+                    uses the class's default_timeout value.
             condition (str, optional): The expected state condition the element must satisfy.
-                                    Valid options are:
-                                    - 'clickable': Element must be present, visible, and enabled
-                                    - 'visible': Element must be present and visible
-                                    - 'present': Element must be present in the DOM (any state)
-                                    Defaults to 'clickable' for interactive elements.
+                    Valid options are.
+                    - 'clickable': Element must be present, visible, and enabled
+                    - 'visible': Element must be present and visible
+                    - 'present': Element must be present in the DOM
+                    Defaults to 'clickable'.
 
         Returns:
-            selenium.webdriver.remote.webelement.WebElement: The fully-qualified WebElement
-            instance that meets the specified condition and can be used for subsequent operations
-            like clicking, sending keys, or retrieving text content.
+            selenium.webdriver.remote.webelement.WebElement: The located WebElement
+            at the specified index that meets the specified condition.
 
         Raises:
-            ElementNotFoundError: When the element with the specified aria-label attribute
-                            cannot be found within the timeout period under the requested
-                            condition. The exception includes detailed context about
-                            the search parameters and current page state.
-            ValueError: When an unsupported condition string is provided. The error message
-                    includes the invalid condition and a list of supported options.
+            ElementNotFoundError: When the element cannot be found within the timeout period
+                                or when the specified index is out of range.
+            ValueError: When an unsupported match_type or condition is provided.
 
-        Example:
-            >>> helper = SeleniumHelper(driver, default_timeout=10)
-            >>> # Find and click a close button using its ARIA label
-            >>> close_btn = helper.find_by_aria_label("Close modal dialog")
-            >>> close_btn.click()
-            >>> # Find a search input with custom timeout and visibility requirement
-            >>> search_input = helper.find_by_aria_label("Search input field", wait_time=8, condition="visible")
-            >>> search_input.send_keys("query text")  # Interact with visible element
+        Examples:
+            >>> # Default behavior - first element with any tag containing "like"
+            >>> like_btn = helper.find_by_aria_label("like", match_type="contains")
+            
+            >>> # Specific tag - first button containing "like"
+            >>> like_btn = helper.find_by_aria_label("like", match_type="contains", tag="button")
+            
+            >>> # Second match - second element containing "like"
+            >>> like_btn = helper.find_by_aria_label("like", match_type="contains", index=1)
+            
+            >>> # Complex matching - first button with aria-label containing "like this video"
+            >>> btn = helper.find_by_aria_label("like this video", match_type="contains", tag="button")
         """
+        valid_match_types = ['exact', 'contains', 'starts_with', 'ends_with', 'not_contains']
+        if match_type not in valid_match_types:
+            raise ValueError(f"Invalid match_type '{match_type}'. Valid options: {valid_match_types}")
+
+        valid_conditions = ['clickable', 'visible', 'present']
+        if condition not in valid_conditions:
+            raise ValueError(f"Invalid condition '{condition}'. Valid options: {valid_conditions}")
+
         effective_wait_time = wait_time if wait_time is not None else self.default_timeout
         temp_wait = WebDriverWait(self.driver, effective_wait_time)
 
-        locator = (By.XPATH, f"//*[@aria-label='{aria_label}']")
+        if match_type == 'exact':
+            xpath = f"//{tag}[@aria-label='{aria_label}']"
+        elif match_type == 'contains':
+            xpath = f"//{tag}[contains(@aria-label, '{aria_label}')]"
+        elif match_type == 'starts_with':
+            xpath = f"//{tag}[starts-with(@aria-label, '{aria_label}')]"
+        elif match_type == 'ends_with':
+            xpath = f"//{tag}[substring(@aria-label, string-length(@aria-label) - string-length('{aria_label}') + 1) = '{aria_label}']"
+        elif match_type == 'not_contains':
+            xpath = f"//{tag}[not(contains(@aria-label, '{aria_label}'))]"
+
+        indexed_xpath = f"({xpath})[{index + 1}]"
+        locator = (By.XPATH, indexed_xpath)
 
         condition_func = self._get_expected_condition_func(condition)
 
         try:
             element = temp_wait.until(
                 condition_func(locator),
-                message=f"Element with aria-label '{aria_label}' not found or not {condition} within {effective_wait_time} seconds."
+                message=f"Element with aria-label {match_type} '{aria_label}' (tag: {tag}, index: {index}) not found or not {condition} within {effective_wait_time} seconds."
             )
             current_url = self._get_current_url_or_default()
-            automation_logger.info(f"Located element by aria-label: {aria_label}", extra={"locator": locator, "page_url": current_url})
+            automation_logger.info(f"Located element by aria-label ({match_type}): {aria_label}", extra={
+                "locator": locator, 
+                "page_url": current_url,
+                "match_type": match_type,
+                "tag": tag,
+                "index": index
+            })
             return element
+
         except TimeoutException as e:
-            error_msg = f"Timeout finding element with aria-label '{aria_label}' ({condition}) after {effective_wait_time}s."
+            try:
+                all_matching_elements = self.driver.find_elements(By.XPATH, f"//{tag}[contains(@aria-label, '{aria_label}')]")
+                total_matches = len(all_matching_elements)
+                if total_matches > 0 and index >= total_matches:
+                    error_msg = f"Found {total_matches} elements with aria-label containing '{aria_label}', but requested index {index} (0-based). Available indices: 0 to {total_matches-1}"
+                    automation_logger.warning(error_msg)
+            except Exception:
+                pass
+
+            error_msg = f"Timeout finding element with aria-label {match_type} '{aria_label}' (tag: {tag}, index: {index}) ({condition}) after {effective_wait_time}s."
             automation_logger.error(error_msg)
-            automation_logger.capture_debug_info(driver=self.driver, context=f"find_by_aria_label_{aria_label}")
+            automation_logger.capture_debug_info(driver=self.driver, context=f"find_by_aria_label_{aria_label}_{match_type}")
+
             current_url = self._get_current_url_or_default()
             raise ElementNotFoundError(
                 element=aria_label,
                 page=current_url,
                 locator=str(locator),
                 timeout=effective_wait_time,
-                details={"condition": condition}
+                details={"condition": condition, "match_type": match_type, "tag": tag, "index": index}
             ) from e
 
     def find_by_visible_text(
         self,
         text: str,
         tag: str = "*",
+        index: int = 0,  
         wait_time: Optional[int] = None,
         condition: str = "clickable",
         exact_match: bool = False
@@ -716,75 +769,93 @@ class SeleniumHelper:
 
         Args:
             text (str): The visible text string to search for within the element.
-                       For partial matching, any occurrence of this text within the element
-                       content will be matched. For exact matching, only elements whose
-                       direct text content equals this string will be selected.
+                    For partial matching, any occurrence of this text within the element
+                    content will be matched. For exact matching, only elements whose
+                    direct text content equals this string will be selected.
             tag (str, optional): The HTML tag type to search within. Use "*" (default) to
-                               search across all tag types, or specify a particular tag
-                               like "button", "a", "h1", etc. for more targeted searches.
+                            search across all tag types, or specify a particular tag
+                            like "button", "a", "h1", etc. for more targeted searches.
+            index (int, optional): Zero-based index of the matching element to return.
+                                Default is 0 (first match). Use 1 for second match, etc.
             wait_time (Optional[int], optional): Maximum time in seconds to wait for the element
-                                               to meet the specified condition. If None (default),
-                                               uses the class's default_timeout value set during
-                                               initialization. Override for elements that require
-                                               extended loading or processing time.
+                            to meet the specified condition. If None (default),
+                            uses the class's default_timeout value set during
+                            initialization. Override for elements that require
+                            extended loading or processing time.
             condition (str, optional): The expected state condition the element must satisfy.
-                                     Valid options are:
-                                     - 'clickable': Element must be present, visible, and enabled
-                                     - 'visible': Element must be present and visible
-                                     - 'present': Element must be present in the DOM (any state)
-                                     Defaults to 'clickable' for interactive elements.
+                                    Valid options are.
+                                    - 'clickable': Element must be present, visible, and enabled
+                                    - 'visible': Element must be present and visible
+                                    - 'present': Element must be present in the DOM (any state)
+                                    Defaults to 'clickable' for interactive elements.
             exact_match (bool, optional): When True, performs exact text matching using XPath's
                                         text() function, requiring the element's direct text
                                         content to equal the search text. When False (default),
-                                        uses contains() for partial matching that includes
+                                        uses contains(., 'text') for partial matching that includes
                                         text from descendant elements.
 
         Returns:
             selenium.webdriver.remote.webelement.WebElement: The fully-qualified WebElement
-            instance that meets the specified condition and text criteria, ready for
+            at the specified index that meets the specified condition, ready for
             subsequent operations like clicking, sending keys, or retrieving text content.
 
         Raises:
             ElementNotFoundError: When no element containing the specified text can be found
-                               within the timeout period under the requested condition.
-                               The exception includes detailed context about the search
-                               parameters and current page state.
+                            within the timeout period under the requested condition,
+                            or when the specified index is out of range.
+                            The exception includes detailed context about the search
+                            parameters and current page state.
             ValueError: When an unsupported condition string is provided. The error message
-                       includes the invalid condition and a list of supported options.
+                    includes the invalid condition and a list of supported options.
 
         Example:
             >>> helper = SeleniumHelper(driver, default_timeout=10)
-            >>> # Find a submit button with exact text match
-            >>> submit_btn = helper.find_by_visible_text("Submit Form", exact_match=True)
+            >>> # Find the first submit button with exact text match
+            >>> submit_btn = helper.find_by_visible_text("Submit Form", exact_match=True, index=0)
             >>> submit_btn.click()
-            >>> # Find any element containing "Settings" text with custom timeout
-            >>> settings_link = helper.find_by_visible_text("Settings", tag="a", wait_time=8)
+            >>> # Find the second element containing "Settings" text with custom timeout
+            >>> settings_link = helper.find_by_visible_text("Settings", tag="a", index=1, wait_time=8)
             >>> settings_link.click()
+            >>> # Find first button containing "Save" text
+            >>> save_btn = helper.find_by_visible_text("Save", tag="button", index=0)
         """
         effective_wait_time = wait_time if wait_time is not None else self.default_timeout
         temp_wait = WebDriverWait(self.driver, effective_wait_time)
 
         if exact_match:
-            # Use text() for direct child text only
             xpath_expression = f"//{tag}[text()='{text}']"
         else:
-            # Use contains(., 'text') to include text from descendants
             xpath_expression = f"//{tag}[contains(., '{text}')]"
 
-        locator = (By.XPATH, xpath_expression)
+        indexed_xpath = f"({xpath_expression})[{index + 1}]"
+        locator = (By.XPATH, indexed_xpath)
 
         condition_func = self._get_expected_condition_func(condition)
 
         try:
             element = temp_wait.until(
                 condition_func(locator),
-                message=f"Element containing text '{text}' not found or not {condition} within {effective_wait_time} seconds."
+                message=f"Element containing text '{text}' (tag: {tag}, index: {index}) not found or not {condition} within {effective_wait_time} seconds."
             )
             current_url = self._get_current_url_or_default()
-            automation_logger.info(f"Located element by visible text: '{text}'", extra={"locator": locator, "page_url": current_url})
+            automation_logger.info(f"Located element by visible text: '{text}'", extra={
+                "locator": locator, 
+                "page_url": current_url,
+                "tag": tag,
+                "index": index
+            })
             return element
         except TimeoutException as e:
-            error_msg = f"Timeout finding element with text '{text}' ({condition}) after {effective_wait_time}s."
+            try:
+                all_matching_elements = self.driver.find_elements(By.XPATH, f"//{tag}[contains(., '{text}')]")
+                total_matches = len(all_matching_elements)
+                if total_matches > 0 and index >= total_matches:
+                    error_msg = f"Found {total_matches} elements containing text '{text}', but requested index {index} (0-based). Available indices: 0 to {total_matches-1}"
+                    automation_logger.warning(error_msg)
+            except Exception:
+                pass 
+
+            error_msg = f"Timeout finding element with text '{text}' (tag: {tag}, index: {index}) ({condition}) after {effective_wait_time}s."
             automation_logger.error(error_msg)
             automation_logger.capture_debug_info(driver=self.driver, context=f"find_by_visible_text_{text}")
             current_url = self._get_current_url_or_default()
@@ -793,7 +864,7 @@ class SeleniumHelper:
                 page=current_url,
                 locator=str(locator),
                 timeout=effective_wait_time,
-                details={"condition": condition, "exact_match": exact_match}
+                details={"condition": condition, "exact_match": exact_match, "tag": tag, "index": index}
             ) from e
 
     def find_by_partial_attribute(
@@ -833,7 +904,7 @@ class SeleniumHelper:
                                 initialization. Override for elements that require
                                 extended loading or processing time.
             condition (str, optional): The expected state condition the element must satisfy.
-                                Valid options are:
+                                Valid options are.
                                 - 'clickable': Element must be present, visible, and enabled
                                 - 'visible': Element must be present and visible
                                 - 'present': Element must be present in the DOM (any state)
@@ -922,7 +993,7 @@ class SeleniumHelper:
                                 type to find relative to the base element.
                                 Example: (By.TAG_NAME, "button") or (By.CLASS_NAME, "status")
             direction (str, optional): The spatial relationship to search for.
-                                    Valid options are:
+                                    Valid options are.
                                     - 'to_right_of': Target element is positioned to the right of base
                                     - 'to_left_of': Target element is positioned to the left of base
                                     - 'above': Target element is positioned above the base
@@ -969,8 +1040,6 @@ class SeleniumHelper:
             ... )
             >>> print(label.text)  # Get the label text
         """
-        # Import inside function to avoid dependency issues if not used
-        from selenium.webdriver.support.relative_locator import locate_with
 
         effective_wait_time = wait_time if wait_time is not None else self.default_timeout
         temp_wait = WebDriverWait(self.driver, effective_wait_time)
@@ -1029,7 +1098,6 @@ class SeleniumHelper:
                 timeout=effective_wait_time,
                 details={"direction": direction, "base_locator": base_element_locator, "target_locator": target_element_locator}
             ) from e
-
 
     # --- JAVASCRIPT EXECUTION METHODS ---
     def execute_js_script(self, script: str, *args):
@@ -1106,7 +1174,7 @@ class SeleniumHelper:
                         If None (default), uses the class's
                         default_timeout value set during initialization.
             condition (str, optional): The expected state condition the target element
-                        must satisfy before text insertion. Valid options are:
+                        must satisfy before text insertion. Valid options are.
                         - 'clickable': Element must be present, visible, and enabled
                         - 'visible': Element must be present and visible
                         - 'present': Element must be present in the DOM (any state)
@@ -1429,7 +1497,7 @@ class SeleniumHelper:
                         If None (default), uses the class's
                         default_timeout value set during initialization.
             condition (str, optional): The expected state condition the element must satisfy
-                        before clicking. Valid options are:
+                        before clicking. Valid options are.
                             - 'clickable': Element must be present, visible, and enabled
                             - 'visible': Element must be present and visible
                             - 'present': Element must be present in the DOM (any state)
@@ -1531,7 +1599,7 @@ class SeleniumHelper:
                         If None (default), uses the class's
                         default_timeout value set during initialization.
             condition (str, optional): The expected state condition the element must satisfy
-                        before typing. Valid options are:
+                        before typing. Valid options are.
                             - 'clickable': Element must be present, visible, and enabled
                             - 'visible': Element must be present and visible
                             - 'present': Element must be present in the DOM (any state)
@@ -1683,6 +1751,129 @@ class SeleniumHelper:
             except:
                 automation_logger.warning("Could not capture debug info during quit_driver due to driver state.")
         return current_url
+
+    def navigate_to(
+        self,
+        url: str,
+        in_new_tab: bool = False,
+        wait_for_load: bool = True,
+        timeout: Optional[int] = None
+    ) -> None:
+        """
+        Navigate the browser to a specified URL with flexible tab management options.
+
+        This method provides comprehensive navigation capabilities that handle both current tab replacement
+        and new tab creation with proper synchronization and error handling. It validates URL format,
+        manages browser window state, and provides detailed logging for automation traceability.
+        The method includes robust error handling and debugging support to ensure reliable navigation
+        operations across different scenarios.
+
+        The implementation distinguishes between navigation in the current tab (replacing existing content)
+        and opening in a new tab (preserving current content while adding new content). It offers
+        optional waiting for page load completion to ensure subsequent operations execute reliably.
+
+        Args:
+            url (str): The complete absolute URL to navigate to, including protocol specification.
+                    Must include scheme (http:// or https://) and domain. Example: "https://example.com"
+                    The URL will be validated for proper format before attempting navigation.
+            in_new_tab (bool, optional): When True, opens the URL in a new browser tab, preserving
+                                    the current tab's content and allowing for multi-tab scenarios.
+                                    When False (default), replaces the current tab's content.
+                                    Use this for scenarios requiring multiple pages open simultaneously.
+            wait_for_load (bool, optional): When True (default), waits for the navigation to complete
+                                        by verifying the browser URL matches the target URL.
+                                        When False, initiates navigation but returns immediately
+                                        without waiting for page load completion. Use False for
+                                        performance optimization when page content isn't immediately needed.
+            timeout (Optional[int], optional): Maximum time in seconds to wait for navigation completion
+                                            when wait_for_load is True. If None (default), uses
+                                            the class's default_timeout value set during initialization.
+                                            Override for pages that require extended loading time.
+
+        Raises:
+            ValueError: When the provided URL is invalid or missing required protocol components.
+                    The error message includes the problematic URL for easy identification.
+            ActionFailedError: When navigation fails due to driver issues, network problems,
+                            or timeout conditions. The exception includes detailed context
+                            about the navigation attempt and current page state.
+
+        Example:
+            >>> helper = SeleniumHelper(driver, default_timeout=10)
+            >>> # Navigate to example.com in current tab
+            >>> helper.navigate_to("https://example.com")
+            >>> 
+            >>> # Open google.com in a new tab and wait for it to load
+            >>> helper.navigate_to("https://google.com", in_new_tab=True, wait_for_load=True)
+            >>> 
+            >>> # Open github.com in new tab without waiting (for performance)
+            >>> helper.navigate_to("https://github.com", in_new_tab=True, wait_for_load=False)
+            >>> # Switch to the new tab manually if needed
+            >>> all_tabs = driver.window_handles
+            >>> driver.switch_to.window(all_tabs[-1])  # Switch to most recently opened tab
+        """
+        parsed = urlparse(url)
+        if not parsed.scheme or not parsed.netloc:
+            error_msg = f"Invalid URL format - must include protocol (e.g., 'https://'): {url}"
+            automation_logger.error(error_msg)
+            raise ValueError(error_msg)
+
+        effective_timeout = timeout if timeout is not None else self.default_timeout
+        current_url_before = self._get_current_url_or_default()
+
+        try:
+            if in_new_tab:
+                self.driver.execute_script("window.open(arguments[0], '_blank');", url)
+                
+                if wait_for_load:
+                    temp_wait = WebDriverWait(self.driver, effective_timeout)
+                    try:
+                        temp_wait.until(lambda d: len(d.window_handles) > len(d.window_handles))
+                    except TimeoutException:
+                        pass 
+
+                    all_handles = self.driver.window_handles
+                    self.driver.switch_to.window(all_handles[-1])
+
+                    temp_wait.until(EC.url_to_be(url))
+
+                automation_logger.info(
+                    f"Opened URL in new tab: {url}",
+                    extra={"original_url": current_url_before}
+                )
+
+            else:
+                self.driver.get(url)
+
+                if wait_for_load:
+                    temp_wait = WebDriverWait(self.driver, effective_timeout)
+                    temp_wait.until(EC.url_to_be(url))
+
+                automation_logger.info(
+                    f"Navigated to URL in current tab: {url}",
+                    extra={"previous_url": current_url_before}
+                )
+        
+        except Exception as e:
+            error_msg = f"Failed to visit website '{url}' (new_tab={in_new_tab}): {str(e)}"
+            automation_logger.error(error_msg)
+            automation_logger.capture_debug_info(
+                driver=self.driver,
+                context=f"visit_website_{'new_tab' if in_new_tab else 'current_tab'}"
+            )
+            raise ActionFailedError(
+                action_type="visit_website",
+                element=url,
+                page=current_url_before,
+                reason=str(e),
+                details={
+                    "in_new_tab": in_new_tab,
+                    "wait_for_load": wait_for_load,
+                    "timeout": effective_timeout
+                }
+            ) from e
+
+
+
 
 
 

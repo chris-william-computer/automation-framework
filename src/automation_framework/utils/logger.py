@@ -1,18 +1,22 @@
 """
-automation_framework.utils.logger - Centralized logging system for automation workflows.
+Professional logging utilities for automation debugging.
 
-This module provides a structured logging system specifically designed for automation
-testing. It offers consistent logging across all automation components (web, desktop)
-with both console output for real-time monitoring and file output for historical records.
-The logger includes methods for different log levels (info, warning, error, critical)
-and supports additional context data for enhanced debugging.
+This module provides a comprehensive logging system that integrates with
+the debugging infrastructure to provide detailed, contextual logs for
+both successful operations and failures. It ensures all automation events
+are properly recorded for analysis and troubleshooting.
 
-Main Components:
-- AutomationLogger: Class that wraps Python's logging module with automation-specific features
-- automation_logger: Global instance for easy access throughout the framework
+The logging system implements a hierarchical approach with multiple output
+channels, ensuring appropriate information reaches the right audience while
+maintaining comprehensive audit trails for post-mortem analysis. It provides
+seamless integration with the debug helper system to automatically capture
+relevant artifacts during error conditions.
 
-The logger outputs timestamps, log levels, and messages in a consistent format to help
-track automation execution flow and diagnose issues quickly.
+Example:
+    >>> from utils.logger import automation_logger
+    >>> automation_logger.info("Starting login flow")
+    >>> # During failure
+    >>> automation_logger.capture_debug_info(driver, context="login_test")
 """
 
 import os
@@ -21,6 +25,9 @@ from datetime import datetime
 from pathlib import Path
 from typing import Optional, Union
 from selenium.webdriver.remote.webdriver import WebDriver
+
+from automation_framework.utils.debug_helper import DebugHelper
+
 
 class AutomationLogger:
     """
@@ -50,12 +57,15 @@ class AutomationLogger:
         artifact capture during error conditions, creating a cohesive logging
         and debugging ecosystem.
         """
+
         self.logger = logging.getLogger("Automation")
         self.logger.setLevel(logging.DEBUG)
 
         # Prevent duplicate handlers if logger already configured
         if not self.logger.handlers:
             self._setup_handlers()
+
+        self.debug_helper = DebugHelper()
 
     def _setup_handlers(self):
         """
@@ -76,6 +86,19 @@ class AutomationLogger:
         )
         console_handler.setFormatter(console_formatter)
         self.logger.addHandler(console_handler)
+        
+        # File handler for detailed persistent logs with full context information
+        file_handler = logging.FileHandler(
+            "logs/automation.log",
+            encoding="utf-8"
+        )
+        file_handler.setLevel(logging.DEBUG)
+        file_formatter = logging.Formatter(
+            "%(asctime)s [%(levelname)s] [%(filename)s:%(lineno)d] %(funcName)s() - %(message)s",
+            datefmt="%Y-%m-%d %H:%M:%S"
+        )
+        file_handler.setFormatter(file_formatter)
+        self.logger.addHandler(file_handler)
 
     def info(self, message: str, extra: Optional[dict] = None):
         """
@@ -161,9 +184,125 @@ class AutomationLogger:
             message = f"{message} | Context: {extra}"
         self.logger.critical(message)
 
+    def capture_debug_info(
+        self,
+        driver: Optional[WebDriver] = None,
+        context: str = "Unknown",
+        save_screenshot: bool = True,
+        save_page_source: bool = True,
+        save_console_logs: bool = True,
+        save_system_info: bool = True
+    ) -> dict:
+        """
+        Orchestrate comprehensive debug artifact capture for failure analysis.
+
+        This method serves as the central point for gathering all relevant
+        information when failures occur. It coordinates multiple data sources
+        to create a complete picture of the failure context, enabling efficient
+        troubleshooting and root cause analysis. The method is designed to
+        continue operating even when individual capture operations fail,
+        ensuring maximum information preservation.
+
+        The debug capture process is highly configurable, allowing different
+        combinations of artifacts based on the specific automation context
+        and resource constraints.
+
+        Args:
+            driver: Optional Selenium WebDriver instance for web automation artifacts.
+                   Required for page source and console log capture.
+            context: Descriptive name for the test scenario or operation.
+                    Used for organizing and identifying debug artifacts.
+            save_screenshot: Whether to capture visual state representation.
+            save_page_source: Whether to capture HTML source (requires driver).
+            save_console_logs: Whether to capture browser console output (requires driver).
+            save_system_info: Whether to capture system resource and platform details.
+
+        Returns:
+            Dictionary mapping artifact type identifiers to their file paths.
+            Enables easy access to all captured debug information for analysis.
+
+        Example:
+            >>> from selenium import webdriver
+            >>> driver = webdriver.Chrome()
+            >>> try:
+            ...     # Some operation that might fail
+            ...     pass
+            ... except Exception as e:
+            ...     artifacts = automation_logger.capture_debug_info(
+            ...         driver=driver,
+            ...         context="login_flow",
+            ...         save_screenshot=True,
+            ...         save_page_source=True
+            ...     )
+            ...     print(f"Debug artifacts: {artifacts}")
+        """
+
+        artifacts = self.debug_helper.capture_all(
+            context=context,
+            error="Manual debug capture",
+            driver=driver,
+            save_screenshot=save_screenshot,
+            save_page_source=save_page_source,
+            save_console_logs=save_console_logs,
+            save_system_info=save_system_info
+        )
+        
+        self.logger.error(f"Debug artifacts captured for context '{context}': {artifacts}")
+        return artifacts
+
+    def capture_pyautogui_debug(
+        self,
+        operation: str,
+        target: str,
+        error: str,
+        context: str = "desktop_automation"
+    ) -> dict:
+        """
+        Specialized debug capture for PyAutoGUI desktop automation failures.
+
+        Desktop automation presents unique challenges for debugging due to
+        system-level interactions and environmental dependencies. This method
+        captures the specific information needed to diagnose desktop automation
+        issues, including screen state, operation context, and environmental
+        factors that may affect coordinate-based operations.
+
+        Args:
+            operation: PyAutoGUI operation that failed (e.g., 'click', 'locateImage').
+                      Provides operational context for the failure.
+            target: Target of the operation (coordinates, image file, etc.).
+                   Specifies what the operation was attempting to interact with.
+            error: Error message or exception from the failed operation.
+            context: Contextual name for the operation, defaults to 'desktop_automation'.
+
+        Returns:
+            Dictionary mapping PyAutoGUI-specific artifact types to file paths.
+            Includes both visual and metadata artifacts for comprehensive debugging.
+
+        Example:
+            >>> try:
+            ...     import pyautogui
+            ...     pyautogui.click(100, 100)
+            ... except Exception as e:
+            ...     artifacts = automation_logger.capture_pyautogui_debug(
+            ...         operation="click",
+            ...         target="(100, 100)",
+            ...         error=str(e),
+            ...         context="file_dialog_interaction"
+            ...     )
+        """
+
+        artifacts = self.debug_helper.capture_pyautogui_debug(
+            operation=operation,
+            target=target,
+            error=error,
+            context=context
+        )
+        
+        self.logger.error(f"PyAutoGUI debug artifacts captured for context '{context}': {artifacts}")
+        return artifacts
+
 
 automation_logger = AutomationLogger()
-'''Instance of AutomationLogger. 
-Global instance for easy access throughout the application
-This singleton pattern ensures consistent logging configuration across all modules
+'''
+Global instance of the class AutomationLogger
 '''
